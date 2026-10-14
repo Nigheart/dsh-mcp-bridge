@@ -114,7 +114,8 @@ Environment variables:
 | `dsh_list_sessions` | List sessions of the running instance, optionally filtered to one workspace. |
 | `dsh_delegate` | Create a session in a workspace, or continue one by `sessionId`, send an instruction, and wait for that turn to finish. |
 | `dsh_answer` | Answer a question the DSH agent asked, so it can resume. |
-| `dsh_approval` | Choose how that session resolves approval requests: `gui`, `auto-approve`, or `deny`. |
+| `dsh_approval` | Choose how a session resolves **future** approval requests: `gui`, `auto-approve`, or `deny`. |
+| `dsh_cancel` | Cancel the active turn — the way out of an approval nobody can answer. |
 | `dsh_poll` | Read a session's status and latest output; use after a wait that returned `waiting` or `timeout`. |
 
 ### Delegating work
@@ -181,16 +182,22 @@ outside the session workspace. The session then reports:
 ```
 
 `reason` is DSH's own explanation of what it wants and why, so the caller can judge whether granting it is
-appropriate. Three ways to resolve it:
+appropriate.
 
-- **Leave it to the GUI** (the default) — a person answers in the DSH Web GUI.
-- **`dsh_approval({ sessionId, mode: "deny" })`** — sets the session's approval policy to `never`, so every
-  request resolves as rejected at once. This is the unattended stance: the operation fails cleanly instead of
-  blocking forever.
-- **`dsh_approval({ sessionId, mode: "auto-approve" })`** — this plugin answers the request itself with a
-  one-shot grant. Use it only for sessions you are deliberately driving unattended, and note that whether the
-  plugin sits upstream of the GUI's answerer is deployment-dependent: check the bridge's
-  `/dsh-bridge/diagnostics` endpoint (`approvalListener.listenerHits`) to see whether it is actually consulted.
+**An approval that is already pending has only two exits**: a person answers it in the DSH Web GUI, or the turn
+is abandoned with `dsh_cancel`. Nothing below can rescue the request that is already open.
+
+`dsh_approval({ sessionId, mode })` decides how **future** approvals in that session are handled. The policy
+takes effect at the agent's next step, so it never applies retroactively:
+
+- `"gui"` (the default) — leave them to the DSH Web GUI for a person to answer.
+- `"deny"` — set the session's policy to `never`: every subsequent request resolves as rejected without
+  prompting. For unattended work this beats waiting forever — a clean failure instead of a hang.
+- `"auto-approve"` — this plugin answers the request itself with a one-shot grant. Whether that is even possible
+  is deployment-dependent: the plugin has to sit **upstream** of the GUI's answerer. Registering the mode is
+  therefore **not** proof that it works — check the bridge's `/dsh-bridge/diagnostics`
+  (`approvalListener.listenerHits`); the endpoint reports `effective: false` with a warning when it cannot. On
+  the deployment this was built against, `listenerHits` is 0, so only `deny` and `gui` take effect there.
 
 A tool call that has simply not finished yet is **not** reported as `waiting`; such a session stays `running`
 and carries an informational `pendingTool` field.

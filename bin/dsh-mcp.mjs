@@ -98,10 +98,10 @@ function waitingNotice(view) {
     const tools = (waiting.detail || []).map((entry) => entry.toolName).filter(Boolean)
     const what = tools.length > 0 ? `the tool "${tools.join('", "')}"` : 'a tool call'
     return (
-      `DSH is blocked on an approval request for ${what}. Three ways out: ` +
-      '(1) ask the user to approve or reject it in the DSH GUI, then call dsh_poll again; ' +
-      '(2) call dsh_approval({ sessionId, mode: "auto-approve" }) to grant this session\'s approvals automatically; ' +
-      '(3) call dsh_approval({ sessionId, mode: "deny" }) to make them fail immediately instead of waiting for anyone.'
+      `DSH is blocked on an approval request for ${what}. This approval is ALREADY pending, so it can only be ` +
+      'resolved by a person in the DSH GUI, or abandoned with dsh_cancel. ' +
+      'dsh_approval changes how FUTURE approvals are handled, not this one: "deny" makes later ones fail at once, ' +
+      '"gui" leaves them to the GUI. waiting.detail carries the reason DSH gave for asking.'
     )
   }
   if (waiting.kind === 'user-question') {
@@ -261,6 +261,21 @@ const TOOLS = [
       additionalProperties: false,
     },
   },
+  {
+    name: 'dsh_cancel',
+    description:
+      'Cancel the active turn of a DSH session. Use it to abandon a turn that is blocked on an approval nobody ' +
+      'can answer, or one that is running too long. Only the running turn stops; messages already queued inside ' +
+      'DSH keep going.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string', description: 'The DSH session whose active turn should stop.' },
+      },
+      required: ['sessionId'],
+      additionalProperties: false,
+    },
+  },
 ]
 
 async function callTool(name, args) {
@@ -354,6 +369,14 @@ async function callTool(name, args) {
     return textBlock(JSON.stringify(result, null, 2))
   }
 
+  if (name === 'dsh_cancel') {
+    const result = await callBridge('/cancel', {
+      method: 'POST',
+      body: { sessionId: args.sessionId },
+    })
+    return textBlock(JSON.stringify(result, null, 2))
+  }
+
   if (name === 'dsh_poll') {
     const baselineSeq = Number(args.baselineSeq || 0)
     const timeoutMs = Number(args.timeoutMs || 0)
@@ -396,7 +419,7 @@ async function handleRequest(method, params) {
       return {
         protocolVersion: (params && params.protocolVersion) || '2024-11-05',
         capabilities: { tools: {} },
-        serverInfo: { name: 'dsh-agent-control', version: '0.4.0' },
+        serverInfo: { name: 'dsh-agent-control', version: '0.4.1' },
         // Injected into the client's context at handshake time, so the caller
         // learns the delegation model and the waiting contract without any
         // manual setup on the user's side.
@@ -409,7 +432,8 @@ async function handleRequest(method, params) {
           '- dsh_delegate: create a session in a workspace (or continue one via sessionId), send an',
           '  instruction, and block until the turn finishes, returning the final output.',
           '- dsh_answer: answer a question DSH asked, so its agent can resume.',
-          '- dsh_approval: choose how a session resolves approval requests.',
+          '- dsh_approval: choose how a session resolves FUTURE approval requests.',
+          '- dsh_cancel: cancel the active turn — the way out of a blocked approval.',
           '- dsh_poll: check a session that is still running or was left waiting.',
           '',
           'Workflow: dsh_delegate({ workspace, instruction }). Omit sessionId to start a new DSH',
@@ -421,10 +445,11 @@ async function handleRequest(method, params) {
           '    "user-question" + intercepted:true -> answer it with dsh_answer({ sessionId, answers })',
           '        using the ids in waiting.detail. If intercepted is false the question is sitting in',
           '        the DSH GUI instead and only a person there can answer it.',
-          '    "approval" -> an operation needs a decision before DSH will run it. waiting.detail',
-          '        carries the tool, the callId and the reason DSH gave. Either let the user approve',
-          '        it in the DSH GUI, or call dsh_approval({ sessionId, mode }) with mode',
-          '        "auto-approve" to grant it, or "deny" to make it fail at once instead of hanging.',
+          '    "approval" -> an operation needs a decision before DSH will run it, and this one is',
+          '        already pending: only a person in the DSH GUI can approve it, or dsh_cancel',
+          '        abandons the turn. waiting.detail carries the tool, the callId and the reason',
+          '        DSH gave. dsh_approval({ sessionId, mode }) only changes FUTURE approvals:',
+          '        "deny" rejects them at once, "gui" leaves them to the GUI.',
           '',
           'Rules: always reuse sessionId to continue work — a new session loses context. Pass an',
           'absolute path as workspace when creating a session. Resolve a waiting state yourself',

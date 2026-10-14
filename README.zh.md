@@ -112,7 +112,8 @@ server 会在 MCP 握手时（`initialize.instructions`）下发自己的用法�
 | `dsh_list_sessions` | 列出该实例的会话，可按工作区过滤。 |
 | `dsh_delegate` | 在工作区新建会话、或按 `sessionId` 继续一个会话，发送指令并等待该轮结束。 |
 | `dsh_answer` | 回答 DSH agent 提出的问题，让它继续。 |
-| `dsh_approval` | 选择该会话如何处理审批请求：`gui`、`auto-approve` 或 `deny`。 |
+| `dsh_approval` | 选择该会话**后续**审批请求如何处理：`gui`、`auto-approve` 或 `deny`。 |
+| `dsh_cancel` | 中断当前轮次——用于放弃一笔无人能应答的审批。 |
 | `dsh_poll` | 读取会话状态与最新输出；用于等待返回 `waiting` 或 `timeout` 之后。 |
 
 ### 委派任务
@@ -176,14 +177,21 @@ dsh_answer({ sessionId, answers: [{ id: "choice", selected: ["sqlite"] }] })
 }
 ```
 
-`reason` 是 DSH 自己给出的说明，讲清它想做什么、为什么需要，调用方据此判断该不该批准。三种处理方式：
+`reason` 是 DSH 自己给出的说明，讲清它想做什么、为什么需要，调用方据此判断该不该批准。
 
-- **交给 GUI**（默认）——由人在 DSH Web GUI 里回答。
-- **`dsh_approval({ sessionId, mode: "deny" })`** —— 把该会话的审批策略设为 `never`，每个请求立即判定为
-  拒绝。这是无人值守姿态：操作干净地失败，而不是永久阻塞。
-- **`dsh_approval({ sessionId, mode: "auto-approve" })`** —— 由本插件直接以一次性授权应答。只在你刻意无人
-  值守地驱动会话时使用；插件是否位于 GUI answerer 的上游取决于具体部署，可用桥接的
-  `/dsh-bridge/diagnostics` 端点（`approvalListener.listenerHits`）确认它是否真的被询问到。
+**已经挂起的那笔审批只有两条出路**：由人在 DSH Web GUI 里回答，或者用 `dsh_cancel` 放弃整轮。
+下面的模式都救不了它。
+
+`dsh_approval({ sessionId, mode })` 决定该会话**后续**审批怎么处理。策略在 agent 的下一步生效，
+因此不会追溯：
+
+- `"gui"`（默认）—— 留给 DSH Web GUI，由人回答。
+- `"deny"` —— 把该会话策略设为 `never`：之后每个请求都直接判定为拒绝，不再询问。无人值守时这比无限等待
+  更好——你会拿到一个干净的失败，而不是挂住。
+- `"auto-approve"` —— 由本插件直接以一次性授权应答。**能否生效取决于部署**：插件必须排在 GUI answerer
+  的**上游**。所以注册成功**并不等于**它能工作——请查桥接的 `/dsh-bridge/diagnostics`
+  （`approvalListener.listenerHits`）；做不到时该端点会返回 `effective: false` 并附带警告。本插件实际
+  开发所依据的那套部署里 `listenerHits` 为 0，因此只有 `deny` 与 `gui` 会真正生效。
 
 仅仅尚未执行完的工具调用**不会**被报成 `waiting`；这类会话保持 `running`，并附带一个信息性的
 `pendingTool` 字段。
