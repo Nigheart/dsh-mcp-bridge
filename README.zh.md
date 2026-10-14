@@ -40,10 +40,10 @@ MCP 客户端（stdio）
 
 ## 安装插件
 
-在正在运行的那个 profile 下使用 DSH CLI：
+直接从本仓库安装——该包未发布到 npm：
 
 ```bash
-dsh plugin --profile web add dsh-mcp-bridge
+dsh plugin --profile web add github:Nigheart/dsh-mcp-bridge
 ```
 
 然后重启 DSH。启动日志里应出现：
@@ -67,7 +67,7 @@ curl -s http://127.0.0.1:3080/dsh-bridge/ping
 
 ```json
 {
-  "dependencies": { "dsh-mcp-bridge": "^0.3.0" },
+  "dependencies": { "dsh-mcp-bridge": "github:Nigheart/dsh-mcp-bridge" },
   "dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-mcp-bridge"] } }
 }
 ```

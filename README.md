@@ -41,10 +41,10 @@ receives the finished result.
 
 ## Install the plugin
 
-Use the DSH CLI from the profile that is running:
+Install straight from this repository — the package is not published to npm:
 
 ```bash
-dsh plugin --profile web add dsh-mcp-bridge
+dsh plugin --profile web add github:Nigheart/dsh-mcp-bridge
 ```
 
 Then restart DSH. On startup the log should show:
@@ -69,7 +69,7 @@ If you prefer to wire it up by hand, add the package to the profile's `package.j
 
 ```json
 {
-  "dependencies": { "dsh-mcp-bridge": "^0.3.0" },
+  "dependencies": { "dsh-mcp-bridge": "github:Nigheart/dsh-mcp-bridge" },
   "dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-mcp-bridge"] } }
 }
 ```
