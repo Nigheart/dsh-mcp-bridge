@@ -1,0 +1,13 @@
+# dsh-mcp-bridge bundle patch: inserts this plugin into a profile's layer stack.
+# Applied when a profile lists this bundle. The row references the package by
+# name so Node resolution finds the installed code.
+#
+# `inject` is required, not decoration. Without it the row can activate before
+# the web server and session controller exist; the plugin then reads
+# ctx.get('webServer') as undefined and declines to mount — silently, because
+# that guard exists to tolerate a missing deployment, not to report one. Naming
+# both services here makes Cordis wait until they are available.
+- insert:
+    - id: dsh-mcp-bridge
+      name: 'dsh-mcp-bridge'
+      inject: [webServer, sessionController]

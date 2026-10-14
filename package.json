@@ -1,0 +1,42 @@
+{
+  "name": "dsh-mcp-bridge",
+  "version": "0.3.0",
+  "description": "Expose a running DeepSeek Harness instance over MCP, so an external agent can list, delegate to, and answer questions in that instance's own sessions.",
+  "type": "module",
+  "main": "lib/index.js",
+  "bin": {
+    "dsh-mcp-bridge": "bin/dsh-mcp.mjs"
+  },
+  "exports": {
+    ".": "./lib/index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "bin/dsh-mcp.mjs",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "mcp",
+    "model-context-protocol",
+    "codex",
+    "agent",
+    "subagent"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}
