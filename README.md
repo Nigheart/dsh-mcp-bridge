@@ -1,5 +1,7 @@
 # dsh-mcp-bridge
 
+[English](README.md) | [简体中文](README.zh.md)
+
 Expose a running [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH) instance over the
 [Model Context Protocol](https://modelcontextprotocol.io), so an external agent — Codex, or any MCP client —
 can drive that instance's own sessions.

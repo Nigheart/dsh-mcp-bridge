@@ -1,5 +1,7 @@
 # dsh-mcp-bridge
 
+[English](README.md) | [简体中文](README.zh.md)
+
 把一个正在运行的 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）实例通过
 [MCP](https://modelcontextprotocol.io) 暴露出来，让外部 agent——Codex，或任何 MCP 客户端——直接驱动
 该实例自己的会话。
