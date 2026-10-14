@@ -469,6 +469,11 @@ async function handleRequest(method, params) {
           '- Never delegate visual design (drawing, web page layout, application UI, art): the model cannot',
           '  do it. For front-end work, supply a detailed written spec or a visual mockup first.',
           '- Do not check progress often; look in only when the user asks you to go faster.',
+          '- Use these tools only when the user asks. If, after analysing the work, you think part of it suits',
+          '  DSH, propose that and wait for agreement — do not start a delegation on your own initiative.',
+          '- The user normally sets the workspace up in advance and names it, usually the same workspace you',
+          '  (Codex) are already working in. If no workspace was given, ask whether to use your own workspace',
+          '  before creating a session — do not assume it.',
         ].join('\n'),
       }
     case 'tools/list':
