@@ -114,6 +114,7 @@ Environment variables:
 | `dsh_list_sessions` | List sessions of the running instance, optionally filtered to one workspace. |
 | `dsh_delegate` | Create a session in a workspace, or continue one by `sessionId`, send an instruction, and wait for that turn to finish. |
 | `dsh_answer` | Answer a question the DSH agent asked, so it can resume. |
+| `dsh_approval` | Choose how that session resolves approval requests: `gui`, `auto-approve`, or `deny`. |
 | `dsh_poll` | Read a session's status and latest output; use after a wait that returned `waiting` or `timeout`. |
 
 ### Delegating work
@@ -128,7 +129,7 @@ which still remembers the earlier work. `status` tells you what happened:
 | `status` | Meaning |
 |---|---|
 | `completed` | The turn finished; `output` holds the agent's final answer. |
-| `waiting` | The agent asked a question and takeover is holding it for you. |
+| `waiting` | Blocked on a human: either a question takeover is holding for you, or an open approval request. |
 | `timeout` | Still running; call `dsh_poll` with the same `baselineSeq`. |
 
 ### Answering questions
@@ -158,6 +159,41 @@ dsh_answer({ sessionId, answers: [{ id: "choice", selected: ["sqlite"] }] })
 If nobody answers within about three minutes, the question falls back to the DSH GUI, so an unattended
 delegation cannot hang forever. Pass `takeover: false` to `dsh_delegate` to leave questions with the GUI from
 the start.
+
+### Approvals
+
+Some operations need a decision before DSH will run them — for example escalating a sandbox so a tool can write
+outside the session workspace. The session then reports:
+
+```json
+{
+  "status": "waiting",
+  "waiting": {
+    "kind": "approval",
+    "detail": [{
+      "id": "d0f853e3-...",
+      "toolName": "pwsh",
+      "callId": "call_00_...",
+      "reason": "escalate sandbox to danger-full-access: ... outside the session workspace"
+    }]
+  }
+}
+```
+
+`reason` is DSH's own explanation of what it wants and why, so the caller can judge whether granting it is
+appropriate. Three ways to resolve it:
+
+- **Leave it to the GUI** (the default) — a person answers in the DSH Web GUI.
+- **`dsh_approval({ sessionId, mode: "deny" })`** — sets the session's approval policy to `never`, so every
+  request resolves as rejected at once. This is the unattended stance: the operation fails cleanly instead of
+  blocking forever.
+- **`dsh_approval({ sessionId, mode: "auto-approve" })`** — this plugin answers the request itself with a
+  one-shot grant. Use it only for sessions you are deliberately driving unattended, and note that whether the
+  plugin sits upstream of the GUI's answerer is deployment-dependent: check the bridge's
+  `/dsh-bridge/diagnostics` endpoint (`approvalListener.listenerHits`) to see whether it is actually consulted.
+
+A tool call that has simply not finished yet is **not** reported as `waiting`; such a session stays `running`
+and carries an informational `pendingTool` field.
 
 ## Security
 

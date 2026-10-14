@@ -1,6 +1,6 @@
 {
   "name": "dsh-mcp-bridge",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Expose a running DeepSeek Harness instance over MCP, so an external agent can list, delegate to, and answer questions in that instance's own sessions.",
   "type": "module",
   "main": "lib/index.js",

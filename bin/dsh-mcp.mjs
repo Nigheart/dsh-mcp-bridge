@@ -74,6 +74,7 @@ function summarizeView(view) {
     running: view.running === true,
     status: view.status,
     takeover: view.takeover === true,
+    pendingTool: view.pendingTool,
     lastSeq: view.lastSeq,
     lastEventType: view.lastEventType,
     assistantCount: view.assistantCount,
@@ -93,18 +94,24 @@ function waitingNotice(view) {
       'If nobody answers within the takeover window the question falls back to the DSH GUI.'
     )
   }
+  if (waiting.kind === 'approval') {
+    const tools = (waiting.detail || []).map((entry) => entry.toolName).filter(Boolean)
+    const what = tools.length > 0 ? `the tool "${tools.join('", "')}"` : 'a tool call'
+    return (
+      `DSH is blocked on an approval request for ${what}. Three ways out: ` +
+      '(1) ask the user to approve or reject it in the DSH GUI, then call dsh_poll again; ' +
+      '(2) call dsh_approval({ sessionId, mode: "auto-approve" }) to grant this session\'s approvals automatically; ' +
+      '(3) call dsh_approval({ sessionId, mode: "deny" }) to make them fail immediately instead of waiting for anyone.'
+    )
+  }
   if (waiting.kind === 'user-question') {
     return (
       'DSH is blocked waiting for a HUMAN to answer its question, and the answerer is the DSH Web GUI. ' +
       'Nobody can answer it from here: tell the user to answer it in the DSH GUI, then call dsh_poll again. ' +
-      'Turning takeover on for this session (dsh_delegate with takeover, or the bridge takeover endpoint) ' +
-      'would route such questions to you instead.'
+      'Turning takeover on for this session (dsh_delegate with takeover) would route such questions to you instead.'
     )
   }
-  return (
-    `DSH is blocked inside the tool "${waiting.toolName}", most likely waiting for approval in the DSH Web GUI. ` +
-    'Ask the user to approve or reject it there, then call dsh_poll again.'
-  )
+  return `DSH reported an unrecognised wait state (${waiting.kind}); call dsh_poll again to re-read it.`
 }
 
 function textBlock(text) {
@@ -233,6 +240,27 @@ const TOOLS = [
       additionalProperties: false,
     },
   },
+  {
+    name: 'dsh_approval',
+    description:
+      'Decide how a DSH session resolves approval requests — operations DSH refuses to run without a decision. ' +
+      '"gui" (the default) leaves them to the DSH Web GUI for a person to answer. ' +
+      '"auto-approve" grants them automatically for that session. ' +
+      '"deny" makes them fail immediately, so an unattended delegation stops instead of blocking forever.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string', description: 'The DSH session to configure.' },
+        mode: {
+          type: 'string',
+          enum: ['gui', 'auto-approve', 'deny'],
+          description: 'How approval requests for this session should be resolved.',
+        },
+      },
+      required: ['sessionId', 'mode'],
+      additionalProperties: false,
+    },
+  },
 ]
 
 async function callTool(name, args) {
@@ -318,6 +346,14 @@ async function callTool(name, args) {
     )
   }
 
+  if (name === 'dsh_approval') {
+    const result = await callBridge('/approval', {
+      method: 'POST',
+      body: { sessionId: args.sessionId, mode: args.mode },
+    })
+    return textBlock(JSON.stringify(result, null, 2))
+  }
+
   if (name === 'dsh_poll') {
     const baselineSeq = Number(args.baselineSeq || 0)
     const timeoutMs = Number(args.timeoutMs || 0)
@@ -360,7 +396,7 @@ async function handleRequest(method, params) {
       return {
         protocolVersion: (params && params.protocolVersion) || '2024-11-05',
         capabilities: { tools: {} },
-        serverInfo: { name: 'dsh-agent-control', version: '0.3.0' },
+        serverInfo: { name: 'dsh-agent-control', version: '0.4.0' },
         // Injected into the client's context at handshake time, so the caller
         // learns the delegation model and the waiting contract without any
         // manual setup on the user's side.

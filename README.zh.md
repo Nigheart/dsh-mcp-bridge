@@ -112,6 +112,7 @@ server 会在 MCP 握手时（`initialize.instructions`）下发自己的用法�
 | `dsh_list_sessions` | 列出该实例的会话，可按工作区过滤。 |
 | `dsh_delegate` | 在工作区新建会话、或按 `sessionId` 继续一个会话，发送指令并等待该轮结束。 |
 | `dsh_answer` | 回答 DSH agent 提出的问题，让它继续。 |
+| `dsh_approval` | 选择该会话如何处理审批请求：`gui`、`auto-approve` 或 `deny`。 |
 | `dsh_poll` | 读取会话状态与最新输出；用于等待返回 `waiting` 或 `timeout` 之后。 |
 
 ### 委派任务
@@ -126,7 +127,7 @@ dsh_delegate({ workspace: "/home/me/project", instruction: "给 parser.js 补上
 | `status` | 含义 |
 |---|---|
 | `completed` | 该轮结束，`output` 是 agent 的最终答复。 |
-| `waiting` | agent 提出了问题，接管机制把它扣下来交给你。 |
+| `waiting` | 卡在等人：要么是被接管机制扣下的提问，要么是一笔待处理的审批。 |
 | `timeout` | 仍在运行；用同一个 `baselineSeq` 再调 `dsh_poll`。 |
 
 ### 回答问题
@@ -154,6 +155,38 @@ dsh_answer({ sessionId, answers: [{ id: "choice", selected: ["sqlite"] }] })
 
 若约三分钟内无人回答，问题会回落到 DSH GUI，因此无人值守的委派不会永久挂住。给 `dsh_delegate` 传
 `takeover: false` 则从一开始就把问题留给 GUI。
+
+### 审批
+
+有些操作需要先获得决定，DSH 才会执行——例如升级沙箱，好让某个工具能写入会话工作区之外的位置。此时会话会
+报告：
+
+```json
+{
+  "status": "waiting",
+  "waiting": {
+    "kind": "approval",
+    "detail": [{
+      "id": "d0f853e3-...",
+      "toolName": "pwsh",
+      "callId": "call_00_...",
+      "reason": "escalate sandbox to danger-full-access: ... outside the session workspace"
+    }]
+  }
+}
+```
+
+`reason` 是 DSH 自己给出的说明，讲清它想做什么、为什么需要，调用方据此判断该不该批准。三种处理方式：
+
+- **交给 GUI**（默认）——由人在 DSH Web GUI 里回答。
+- **`dsh_approval({ sessionId, mode: "deny" })`** —— 把该会话的审批策略设为 `never`，每个请求立即判定为
+  拒绝。这是无人值守姿态：操作干净地失败，而不是永久阻塞。
+- **`dsh_approval({ sessionId, mode: "auto-approve" })`** —— 由本插件直接以一次性授权应答。只在你刻意无人
+  值守地驱动会话时使用；插件是否位于 GUI answerer 的上游取决于具体部署，可用桥接的
+  `/dsh-bridge/diagnostics` 端点（`approvalListener.listenerHits`）确认它是否真的被询问到。
+
+仅仅尚未执行完的工具调用**不会**被报成 `waiting`；这类会话保持 `running`，并附带一个信息性的
+`pendingTool` 字段。
 
 ## 安全
 
