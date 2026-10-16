@@ -1,3 +1,5 @@
+![dsh-mcp-bridge](assets/banner.gif)
+
 # dsh-mcp-bridge
 
 [English](README.md) | [简体中文](README.zh.md)
