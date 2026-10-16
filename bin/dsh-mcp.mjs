@@ -32,7 +32,20 @@ async function callBridge(path, options = {}) {
     init.headers['Content-Type'] = 'application/json; charset=utf-8'
     init.body = JSON.stringify(options.body)
   }
-  const response = await fetch(BRIDGE + path, init)
+  let response
+  try {
+    response = await fetch(BRIDGE + path, init)
+  } catch (error) {
+    // A bare "fetch failed" tells the operator nothing. Name the address and the
+    // two things that are almost always wrong: DSH is not running, or this shim
+    // is pointed at a different port than the Web profile listens on.
+    const reason = String(error && error.message ? error.message : error)
+    throw new Error(
+      `cannot reach the DSH bridge at ${BRIDGE} (${reason}). Check that DSH is running, and that ` +
+        'DSH_BRIDGE_URL matches the port its Web profile listens on — DSH itself defaults to 3080, ' +
+        'but a profile may set another port in its cordis.patch.yml.',
+    )
+  }
   const text = await response.text()
   let payload
   try {
