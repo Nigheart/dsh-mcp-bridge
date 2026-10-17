@@ -432,7 +432,7 @@ async function handleRequest(method, params) {
       return {
         protocolVersion: (params && params.protocolVersion) || '2024-11-05',
         capabilities: { tools: {} },
-        serverInfo: { name: 'dsh-agent-control', version: '0.4.1' },
+        serverInfo: { name: 'dsh-agent-control', version: '0.4.2' },
         // Injected into the client's context at handshake time, so the caller
         // learns the delegation model and the waiting contract without any
         // manual setup on the user's side.

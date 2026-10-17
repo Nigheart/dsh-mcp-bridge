@@ -135,6 +135,11 @@ which still remembers the earlier work. `status` tells you what happened:
 | `waiting` | Blocked on a human: either a question takeover is holding for you, or an open approval request. |
 | `timeout` | Still running; call `dsh_poll` with the same `baselineSeq`. |
 
+The bridge also attaches every session it creates (or reuses) to the DSH workspace owning the target
+directory. DSH groups sessions in its GUI by that explicit attachment rather than by working directory, so
+without it a delegated session runs fine but shows up as *ungrouped*. Sessions created before this behaviour
+existed can be repaired with one call to the bridge's `POST /dsh-bridge/attach-all` endpoint.
+
 ### Answering questions
 
 By default a delegated session runs under **takeover**: when the DSH agent calls its question tool, the call is
