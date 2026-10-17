@@ -5,7 +5,7 @@
   "type": "module",
   "main": "lib/index.js",
   "bin": {
-    "dsh-mcp-relay": "bin/dsh-mcp.mjs"
+    "dsh-mcp-relay": "bin/dsh-mcp-relay.mjs"
   },
   "exports": {
     ".": "./lib/index.js",
@@ -14,7 +14,7 @@
   },
   "files": [
     "lib/index.js",
-    "bin/dsh-mcp.mjs",
+    "bin/dsh-mcp-relay.mjs",
     "cordis.patch.yml",
     "README.md",
     "README.zh.md",
@@ -36,6 +36,10 @@
     "subagent"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nigheart/dsh-mcp-relay.git"
+  },
   "engines": {
     "node": ">=18"
   }

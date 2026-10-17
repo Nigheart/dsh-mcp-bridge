@@ -20,7 +20,7 @@
 
 ```
 MCP 客户端（stdio）
- └── bin/dsh-mcp.mjs          MCP server；轮询中继，并把提问扣下来交给调用方
+ └── bin/dsh-mcp-relay.mjs          MCP server；轮询中继，并把提问扣下来交给调用方
       └── HTTP 127.0.0.1:<port>/dsh-relay
            └── lib/index.js    跑在 DSH 进程内的 host Cordis 插件
                 └── ctx.sessionController → DSH agent
@@ -30,7 +30,7 @@ MCP 客户端（stdio）
 
 - **`lib/index.js`** 是 DSH host 插件，与 Web GUI 同进程，因此能读写该实例已有的会话。它注册一条 HTTP
   路由，并负责所有与 DSH 的交互。
-- **`bin/dsh-mcp.mjs`** 是独立的 MCP server，对你的 agent 讲 stdio、对插件讲 HTTP。它之所以存在，是因为
+- **`bin/dsh-mcp-relay.mjs`** 是独立的 MCP server，对你的 agent 讲 stdio、对插件讲 HTTP。它之所以存在，是因为
   DSH 进程自己占用了 stdout，插件无法直接提供 stdio 服务。
 
 等待与轮询都发生在 MCP server 内部，那里不产生任何模型开销；你的模型只花一次工具调用，然后拿到完成的
@@ -87,7 +87,7 @@ Codex（`~/.codex/config.toml`）：
 ```toml
 [mcp_servers.dsh]
 command = "node"
-args = ["/absolute/path/to/dsh-mcp-relay/bin/dsh-mcp.mjs"]
+args = ["/absolute/path/to/dsh-mcp-relay/bin/dsh-mcp-relay.mjs"]
 startup_timeout_sec = 60
 
 # 仅在 DSH 不在默认端口、或设置了 token 时需要

@@ -21,7 +21,7 @@ This relay replaces that with a small structured API: one tool call in, one resu
 
 ```
 MCP client (stdio)
- └── bin/dsh-mcp.mjs          MCP server; polls the relay, holds questions for the caller
+ └── bin/dsh-mcp-relay.mjs          MCP server; polls the relay, holds questions for the caller
       └── HTTP 127.0.0.1:<port>/dsh-relay
            └── lib/index.js    host Cordis plugin mounted inside the running DSH process
                 └── ctx.sessionController → DSH agent
@@ -31,7 +31,7 @@ Two halves, and the split matters:
 
 - **`lib/index.js`** is a DSH host plugin. It runs in the same process as the Web GUI, so it can read and
   write the sessions that instance already has. It registers an HTTP route and does the DSH work.
-- **`bin/dsh-mcp.mjs`** is a standalone MCP server that speaks stdio to your agent and HTTP to the plugin.
+- **`bin/dsh-mcp-relay.mjs`** is a standalone MCP server that speaks stdio to your agent and HTTP to the plugin.
   It exists because DSH's own process owns stdout, so the plugin cannot serve stdio itself.
 
 Waiting and polling happen in the MCP server, where they cost nothing; your model spends one tool call and
@@ -89,7 +89,7 @@ Codex (`~/.codex/config.toml`):
 ```toml
 [mcp_servers.dsh]
 command = "node"
-args = ["/absolute/path/to/dsh-mcp-relay/bin/dsh-mcp.mjs"]
+args = ["/absolute/path/to/dsh-mcp-relay/bin/dsh-mcp-relay.mjs"]
 startup_timeout_sec = 60
 
 # Only needed when DSH is not on the default port, or when a token is set.
