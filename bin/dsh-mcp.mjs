@@ -2,9 +2,9 @@
 /**
  * DSH Agent Control — MCP stdio server.
  *
- * Bridges the Model Context Protocol (stdio, newline-delimited JSON-RPC) to the
- * in-process DSH host bridge (HTTP). The bridge is mounted by the
- * dsh-mcp-bridge Cordis plugin inside the *running* DSH instance, so everything
+ * Relays the Model Context Protocol (stdio, newline-delimited JSON-RPC) to the
+ * in-process DSH host relay (HTTP). The relay is mounted by the
+ * dsh-mcp-relay Cordis plugin inside the *running* DSH instance, so everything
  * this server drives is the same live runtime the Web GUI is attached to.
  *
  * stdout carries protocol frames only; all diagnostics go to stderr.
@@ -17,32 +17,32 @@
 
 import { createInterface } from 'node:readline'
 
-const BRIDGE = process.env.DSH_BRIDGE_URL || 'http://127.0.0.1:3080/dsh-bridge'
-const BRIDGE_TOKEN = process.env.DSH_BRIDGE_TOKEN || ''
-const DEFAULT_TIMEOUT_MS = Number(process.env.DSH_BRIDGE_TIMEOUT_MS || 600000)
-const POLL_INTERVAL_MS = Number(process.env.DSH_BRIDGE_POLL_MS || 2000)
+const RELAY = process.env.DSH_RELAY_URL || 'http://127.0.0.1:3080/dsh-relay'
+const RELAY_TOKEN = process.env.DSH_RELAY_TOKEN || ''
+const DEFAULT_TIMEOUT_MS = Number(process.env.DSH_RELAY_TIMEOUT_MS || 600000)
+const POLL_INTERVAL_MS = Number(process.env.DSH_RELAY_POLL_MS || 2000)
 
-const log = (...parts) => process.stderr.write(`[dsh-mcp] ${parts.join(' ')}\n`)
+const log = (...parts) => process.stderr.write(`[dsh-mcp-relay] ${parts.join(' ')}\n`)
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-async function callBridge(path, options = {}) {
+async function callRelay(path, options = {}) {
   const init = { method: options.method || 'GET', headers: {} }
-  if (BRIDGE_TOKEN) init.headers['x-dsh-bridge-token'] = BRIDGE_TOKEN
+  if (RELAY_TOKEN) init.headers['x-dsh-relay-token'] = RELAY_TOKEN
   if (options.body !== undefined) {
     init.headers['Content-Type'] = 'application/json; charset=utf-8'
     init.body = JSON.stringify(options.body)
   }
   let response
   try {
-    response = await fetch(BRIDGE + path, init)
+    response = await fetch(RELAY + path, init)
   } catch (error) {
     // A bare "fetch failed" tells the operator nothing. Name the address and the
     // two things that are almost always wrong: DSH is not running, or this shim
     // is pointed at a different port than the Web profile listens on.
     const reason = String(error && error.message ? error.message : error)
     throw new Error(
-      `cannot reach the DSH bridge at ${BRIDGE} (${reason}). Check that DSH is running, and that ` +
-        'DSH_BRIDGE_URL matches the port its Web profile listens on — DSH itself defaults to 3080, ' +
+      `cannot reach the DSH relay at ${RELAY} (${reason}). Check that DSH is running, and that ` +
+        'DSH_RELAY_URL matches the port its Web profile listens on — DSH itself defaults to 3080, ' +
         'but a profile may set another port in its cordis.patch.yml.',
     )
   }
@@ -51,13 +51,13 @@ async function callBridge(path, options = {}) {
   try {
     payload = JSON.parse(text)
   } catch {
-    throw new Error(`bridge returned non-JSON (HTTP ${response.status}): ${text.slice(0, 300)}`)
+    throw new Error(`relay returned non-JSON (HTTP ${response.status}): ${text.slice(0, 300)}`)
   }
-  if (payload && payload.ok === false) throw new Error(payload.error || 'bridge reported an error')
+  if (payload && payload.ok === false) throw new Error(payload.error || 'relay reported an error')
   return payload && payload.ok === true ? payload.data : payload
 }
 
-const pollOnce = (sessionId) => callBridge(`/poll?sessionId=${encodeURIComponent(sessionId)}`)
+const pollOnce = (sessionId) => callRelay(`/poll?sessionId=${encodeURIComponent(sessionId)}`)
 
 /**
  * Wait for the turn started after `baselineSeq`.
@@ -294,12 +294,12 @@ const TOOLS = [
 async function callTool(name, args) {
   if (name === 'dsh_list_sessions') {
     const query = args.workspace ? `?cwd=${encodeURIComponent(args.workspace)}` : ''
-    const data = await callBridge(`/list${query}`)
+    const data = await callRelay(`/list${query}`)
     return textBlock(JSON.stringify(data, null, 2))
   }
 
   if (name === 'dsh_delegate') {
-    const accepted = await callBridge('/delegate', {
+    const accepted = await callRelay('/delegate', {
       method: 'POST',
       body: {
         instruction: args.instruction,
@@ -357,7 +357,7 @@ async function callTool(name, args) {
   }
 
   if (name === 'dsh_answer') {
-    const result = await callBridge('/answer', {
+    const result = await callRelay('/answer', {
       method: 'POST',
       body: { sessionId: args.sessionId, answers: args.answers },
     })
@@ -375,7 +375,7 @@ async function callTool(name, args) {
   }
 
   if (name === 'dsh_approval') {
-    const result = await callBridge('/approval', {
+    const result = await callRelay('/approval', {
       method: 'POST',
       body: { sessionId: args.sessionId, mode: args.mode },
     })
@@ -383,7 +383,7 @@ async function callTool(name, args) {
   }
 
   if (name === 'dsh_cancel') {
-    const result = await callBridge('/cancel', {
+    const result = await callRelay('/cancel', {
       method: 'POST',
       body: { sessionId: args.sessionId },
     })
@@ -432,7 +432,7 @@ async function handleRequest(method, params) {
       return {
         protocolVersion: (params && params.protocolVersion) || '2024-11-05',
         capabilities: { tools: {} },
-        serverInfo: { name: 'dsh-agent-control', version: '0.4.2' },
+        serverInfo: { name: 'dsh-mcp-relay', version: '0.5.0' },
         // Injected into the client's context at handshake time, so the caller
         // learns the delegation model and the waiting contract without any
         // manual setup on the user's side.
@@ -535,7 +535,7 @@ rl.on('line', (line) => {
         send({
           jsonrpc: '2.0',
           id: message.id,
-          result: { content: [{ type: 'text', text: `DSH bridge error: ${text}` }], isError: true },
+          result: { content: [{ type: 'text', text: `DSH relay error: ${text}` }], isError: true },
         })
       } else {
         send({ jsonrpc: '2.0', id: message.id, error: { code: -32603, message: text } })
@@ -559,4 +559,4 @@ rl.on('close', () => {
   waitForIdle()
 })
 
-log(`ready — bridge=${BRIDGE}`)
+log(`ready — relay=${RELAY}`)

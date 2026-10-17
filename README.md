@@ -1,6 +1,6 @@
-![dsh-mcp-bridge](assets/banner.gif)
+![dsh-mcp-relay](assets/banner.gif)
 
-# dsh-mcp-bridge
+# dsh-mcp-relay
 
 [English](README.md) | [简体中文](README.zh.md)
 
@@ -9,20 +9,20 @@ Expose a running [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harn
 can drive that instance's own sessions.
 
 A DSH session behaves like a subagent from the caller's point of view: it keeps its own context across calls,
-works in the workspace you name, and returns a final answer. The bridge also lets the caller answer the
+works in the workspace you name, and returns a final answer. The relay also lets the caller answer the
 questions that DSH agent asks, so a delegated task never deadlocks waiting for a human who is not there.
 
 ## Why
 
 Driving a DSH instance through its web GUI from another agent costs a screenshot or DOM round trip per step.
-This bridge replaces that with a small structured API: one tool call in, one result out.
+This relay replaces that with a small structured API: one tool call in, one result out.
 
 ## Architecture
 
 ```
 MCP client (stdio)
- └── bin/dsh-mcp.mjs          MCP server; polls the bridge, holds questions for the caller
-      └── HTTP 127.0.0.1:<port>/dsh-bridge
+ └── bin/dsh-mcp.mjs          MCP server; polls the relay, holds questions for the caller
+      └── HTTP 127.0.0.1:<port>/dsh-relay
            └── lib/index.js    host Cordis plugin mounted inside the running DSH process
                 └── ctx.sessionController → DSH agent
 ```
@@ -48,23 +48,23 @@ receives the finished result.
 Install straight from this repository — the package is not published to npm:
 
 ```bash
-dsh plugin --profile web add github:Nigheart/dsh-mcp-bridge
+dsh plugin --profile web add github:Nigheart/dsh-mcp-relay
 ```
 
 Then restart DSH. On startup the log should show:
 
 ```
-[dsh-mcp-bridge] mounted /dsh-bridge (tokenRequired=false)
+[dsh-mcp-relay] mounted /dsh-relay (tokenRequired=false)
 ```
 
 Verify it independently:
 
 ```bash
-curl -s http://127.0.0.1:3080/dsh-bridge/ping
-# {"ok":true,"data":{"bridge":"dsh-mcp-bridge","version":"0.3.0","tokenRequired":false}}
+curl -s http://127.0.0.1:3080/dsh-relay/ping
+# {"ok":true,"data":{"relay":"dsh-mcp-relay","version":"0.5.0","tokenRequired":false}}
 ```
 
-If your instance listens on a port other than 3080, use that port here and set `DSH_BRIDGE_URL` for the MCP
+If your instance listens on a port other than 3080, use that port here and set `DSH_RELAY_URL` for the MCP
 server (below).
 
 ### Manual install
@@ -73,8 +73,8 @@ If you prefer to wire it up by hand, add the package to the profile's `package.j
 
 ```json
 {
-  "dependencies": { "dsh-mcp-bridge": "github:Nigheart/dsh-mcp-bridge" },
-  "dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-mcp-bridge"] } }
+  "dependencies": { "dsh-mcp-relay": "github:Nigheart/dsh-mcp-relay" },
+  "dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-mcp-relay"] } }
 }
 ```
 
@@ -89,12 +89,12 @@ Codex (`~/.codex/config.toml`):
 ```toml
 [mcp_servers.dsh]
 command = "node"
-args = ["/absolute/path/to/dsh-mcp-bridge/bin/dsh-mcp.mjs"]
+args = ["/absolute/path/to/dsh-mcp-relay/bin/dsh-mcp.mjs"]
 startup_timeout_sec = 60
 
 # Only needed when DSH is not on the default port, or when a token is set.
 [mcp_servers.dsh.env]
-DSH_BRIDGE_URL = "http://127.0.0.1:8080/dsh-bridge"
+DSH_RELAY_URL = "http://127.0.0.1:8080/dsh-relay"
 ```
 
 The server sends its own usage notes in the MCP handshake (`initialize.instructions`), so the client learns
@@ -104,10 +104,10 @@ Environment variables:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `DSH_BRIDGE_URL` | `http://127.0.0.1:3080/dsh-bridge` | Where the plugin listens. |
-| `DSH_BRIDGE_TOKEN` | *(unset)* | Sent as `x-dsh-bridge-token`; must match the plugin's value. |
-| `DSH_BRIDGE_TIMEOUT_MS` | `600000` | Default wait for one delegated turn. |
-| `DSH_BRIDGE_POLL_MS` | `2000` | Progress poll interval. |
+| `DSH_RELAY_URL` | `http://127.0.0.1:3080/dsh-relay` | Where the plugin listens. |
+| `DSH_RELAY_TOKEN` | *(unset)* | Sent as `x-dsh-relay-token`; must match the plugin's value. |
+| `DSH_RELAY_TIMEOUT_MS` | `600000` | Default wait for one delegated turn. |
+| `DSH_RELAY_POLL_MS` | `2000` | Progress poll interval. |
 
 ## Tools
 
@@ -135,10 +135,10 @@ which still remembers the earlier work. `status` tells you what happened:
 | `waiting` | Blocked on a human: either a question takeover is holding for you, or an open approval request. |
 | `timeout` | Still running; call `dsh_poll` with the same `baselineSeq`. |
 
-The bridge also attaches every session it creates (or reuses) to the DSH workspace owning the target
+The relay also attaches every session it creates (or reuses) to the DSH workspace owning the target
 directory. DSH groups sessions in its GUI by that explicit attachment rather than by working directory, so
 without it a delegated session runs fine but shows up as *ungrouped*. Sessions created before this behaviour
-existed can be repaired with one call to the bridge's `POST /dsh-bridge/attach-all` endpoint.
+existed can be repaired with one call to the relay's `POST /dsh-relay/attach-all` endpoint.
 
 ### Answering questions
 
@@ -202,7 +202,7 @@ takes effect at the agent's next step, so it never applies retroactively:
   prompting. For unattended work this beats waiting forever — a clean failure instead of a hang.
 - `"auto-approve"` — this plugin answers the request itself with a one-shot grant. Whether that is even possible
   is deployment-dependent: the plugin has to sit **upstream** of the GUI's answerer. Registering the mode is
-  therefore **not** proof that it works — check the bridge's `/dsh-bridge/diagnostics`
+  therefore **not** proof that it works — check the relay's `/dsh-relay/diagnostics`
   (`approvalListener.listenerHits`); the endpoint reports `effective: false` with a warning when it cannot. On
   the deployment this was built against, `listenerHits` is 0, so only `deny` and `gui` take effect there.
 
@@ -211,19 +211,19 @@ and carries an informational `pendingTool` field.
 
 ## Security
 
-The bridge is a control surface: whoever can reach it can send instructions to, and read the history of, every
+The relay is a control surface: whoever can reach it can send instructions to, and read the history of, every
 session in that DSH instance.
 
 - It **serves loopback callers only** and answers `403` to anything else. This matters because the shipped Web
   profile binds `0.0.0.0`.
-- Set `DSH_BRIDGE_TOKEN` on both sides to additionally require an `x-dsh-bridge-token` header.
+- Set `DSH_RELAY_TOKEN` on both sides to additionally require an `x-dsh-relay-token` header.
 - The route is registered directly on DSH's HTTP server, so it is **not** covered by the `/api` trusted-host
   fence. Its own checks above are the only gate.
 
 ## Limitations
 
-- The MCP server and DSH must run on the same machine, because the bridge is loopback-only.
-- One delegated turn is bounded by `DSH_BRIDGE_TIMEOUT_MS`; there is no streaming of partial output.
+- The MCP server and DSH must run on the same machine, because the relay is loopback-only.
+- One delegated turn is bounded by `DSH_RELAY_TIMEOUT_MS`; there is no streaming of partial output.
 - `cancel` stops the active turn only — messages already queued in DSH keep running.
 - The plugin reads a session's tail through `sessionController.page`, so a very large session reports its
   recent history rather than all of it.

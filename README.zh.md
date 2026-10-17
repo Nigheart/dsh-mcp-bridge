@@ -1,6 +1,6 @@
-![dsh-mcp-bridge](assets/banner.gif)
+![dsh-mcp-relay](assets/banner.gif)
 
-# dsh-mcp-bridge
+# dsh-mcp-relay
 
 [English](README.md) | [简体中文](README.zh.md)
 
@@ -9,19 +9,19 @@
 该实例自己的会话。
 
 对调用方来说，一个 DSH 会话就像一个子代理：它有自己的上下文、在指定工作区里干活、最后返回一个结果。
-这个桥接还允许调用方**代替人回答 DSH agent 提出的问题**，因此被委派的任务不会因为找不到人而卡死。
+这个中继还允许调用方**代替人回答 DSH agent 提出的问题**，因此被委派的任务不会因为找不到人而卡死。
 
 ## 为什么需要它
 
-用另一个 agent 通过 Web GUI 去操作 DSH，每一步都要付出一次截图或 DOM 往返。这个桥接把这些换成一个小而
+用另一个 agent 通过 Web GUI 去操作 DSH，每一步都要付出一次截图或 DOM 往返。这个中继把这些换成一个小而
 结构化的 API：一次工具调用进，一个结果出。
 
 ## 架构
 
 ```
 MCP 客户端（stdio）
- └── bin/dsh-mcp.mjs          MCP server；轮询桥接，并把提问扣下来交给调用方
-      └── HTTP 127.0.0.1:<port>/dsh-bridge
+ └── bin/dsh-mcp.mjs          MCP server；轮询中继，并把提问扣下来交给调用方
+      └── HTTP 127.0.0.1:<port>/dsh-relay
            └── lib/index.js    跑在 DSH 进程内的 host Cordis 插件
                 └── ctx.sessionController → DSH agent
 ```
@@ -47,23 +47,23 @@ MCP 客户端（stdio）
 直接从本仓库安装——该包未发布到 npm：
 
 ```bash
-dsh plugin --profile web add github:Nigheart/dsh-mcp-bridge
+dsh plugin --profile web add github:Nigheart/dsh-mcp-relay
 ```
 
 然后重启 DSH。启动日志里应出现：
 
 ```
-[dsh-mcp-bridge] mounted /dsh-bridge (tokenRequired=false)
+[dsh-mcp-relay] mounted /dsh-relay (tokenRequired=false)
 ```
 
 也可以单独验证：
 
 ```bash
-curl -s http://127.0.0.1:3080/dsh-bridge/ping
-# {"ok":true,"data":{"bridge":"dsh-mcp-bridge","version":"0.3.0","tokenRequired":false}}
+curl -s http://127.0.0.1:3080/dsh-relay/ping
+# {"ok":true,"data":{"relay":"dsh-mcp-relay","version":"0.5.0","tokenRequired":false}}
 ```
 
-如果你的实例监听的不是 3080，请把这里和下面的 `DSH_BRIDGE_URL` 一起改成实际端口。
+如果你的实例监听的不是 3080，请把这里和下面的 `DSH_RELAY_URL` 一起改成实际端口。
 
 ### 手动安装
 
@@ -71,8 +71,8 @@ curl -s http://127.0.0.1:3080/dsh-bridge/ping
 
 ```json
 {
-  "dependencies": { "dsh-mcp-bridge": "github:Nigheart/dsh-mcp-bridge" },
-  "dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-mcp-bridge"] } }
+  "dependencies": { "dsh-mcp-relay": "github:Nigheart/dsh-mcp-relay" },
+  "dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-mcp-relay"] } }
 }
 ```
 
@@ -87,12 +87,12 @@ Codex（`~/.codex/config.toml`）：
 ```toml
 [mcp_servers.dsh]
 command = "node"
-args = ["/absolute/path/to/dsh-mcp-bridge/bin/dsh-mcp.mjs"]
+args = ["/absolute/path/to/dsh-mcp-relay/bin/dsh-mcp.mjs"]
 startup_timeout_sec = 60
 
 # 仅在 DSH 不在默认端口、或设置了 token 时需要
 [mcp_servers.dsh.env]
-DSH_BRIDGE_URL = "http://127.0.0.1:8080/dsh-bridge"
+DSH_RELAY_URL = "http://127.0.0.1:8080/dsh-relay"
 ```
 
 server 会在 MCP 握手时（`initialize.instructions`）下发自己的用法说明，客户端无需额外提示词就能知道
@@ -102,10 +102,10 @@ server 会在 MCP 握手时（`initialize.instructions`）下发自己的用法�
 
 | 变量 | 默认值 | 用途 |
 |---|---|---|
-| `DSH_BRIDGE_URL` | `http://127.0.0.1:3080/dsh-bridge` | 插件监听的地址。 |
-| `DSH_BRIDGE_TOKEN` | *未设置* | 作为 `x-dsh-bridge-token` 发送，需与插件侧一致。 |
-| `DSH_BRIDGE_TIMEOUT_MS` | `600000` | 单次委派轮次的默认等待上限。 |
-| `DSH_BRIDGE_POLL_MS` | `2000` | 进度轮询间隔。 |
+| `DSH_RELAY_URL` | `http://127.0.0.1:3080/dsh-relay` | 插件监听的地址。 |
+| `DSH_RELAY_TOKEN` | *未设置* | 作为 `x-dsh-relay-token` 发送，需与插件侧一致。 |
+| `DSH_RELAY_TIMEOUT_MS` | `600000` | 单次委派轮次的默认等待上限。 |
+| `DSH_RELAY_POLL_MS` | `2000` | 进度轮询间隔。 |
 
 ## 工具
 
@@ -191,7 +191,7 @@ dsh_answer({ sessionId, answers: [{ id: "choice", selected: ["sqlite"] }] })
 - `"deny"` —— 把该会话策略设为 `never`：之后每个请求都直接判定为拒绝，不再询问。无人值守时这比无限等待
   更好——你会拿到一个干净的失败，而不是挂住。
 - `"auto-approve"` —— 由本插件直接以一次性授权应答。**能否生效取决于部署**：插件必须排在 GUI answerer
-  的**上游**。所以注册成功**并不等于**它能工作——请查桥接的 `/dsh-bridge/diagnostics`
+  的**上游**。所以注册成功**并不等于**它能工作——请查中继的 `/dsh-relay/diagnostics`
   （`approvalListener.listenerHits`）；做不到时该端点会返回 `effective: false` 并附带警告。本插件实际
   开发所依据的那套部署里 `listenerHits` 为 0，因此只有 `deny` 与 `gui` 会真正生效。
 
@@ -200,16 +200,16 @@ dsh_answer({ sessionId, answers: [{ id: "choice", selected: ["sqlite"] }] })
 
 ## 安全
 
-这个桥接是一个控制面：能访问它的人，就能向该 DSH 实例的任意会话发送指令、读取其全部历史。
+这个中继是一个控制面：能访问它的人，就能向该 DSH 实例的任意会话发送指令、读取其全部历史。
 
 - 它**只服务回环调用方**，其余一律返回 `403`。这一点很重要，因为随附的 Web profile 绑定的是 `0.0.0.0`。
-- 两端都设置 `DSH_BRIDGE_TOKEN` 可以额外要求 `x-dsh-bridge-token` 头。
+- 两端都设置 `DSH_RELAY_TOKEN` 可以额外要求 `x-dsh-relay-token` 头。
 - 该路由直接注册在 DSH 的 HTTP 服务器上，**不受** `/api` 的信任主机栅栏保护；上面的检查是唯一的关口。
 
 ## 已知限制
 
-- MCP server 与 DSH 必须在同一台机器上，因为桥接只服务回环。
-- 单次委派轮次受 `DSH_BRIDGE_TIMEOUT_MS` 限制，且不流式返回中间输出。
+- MCP server 与 DSH 必须在同一台机器上，因为中继只服务回环。
+- 单次委派轮次受 `DSH_RELAY_TIMEOUT_MS` 限制，且不流式返回中间输出。
 - `cancel` 只停止当前活动轮次，DSH 里已排队的消息仍会继续执行。
 - 插件通过 `sessionController.page` 读取会话尾部，因此超大会话只报告近期历史。
 
