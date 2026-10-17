@@ -86,6 +86,7 @@ function summarizeView(view) {
   return {
     running: view.running === true,
     status: view.status,
+    model: view.model,
     takeover: view.takeover === true,
     pendingTool: view.pendingTool,
     lastSeq: view.lastSeq,
@@ -149,13 +150,26 @@ const TOOLS = [
     },
   },
   {
+    name: 'dsh_models',
+    description:
+      'List the models this DSH instance can route right now, grouped by provider, with each model\'s ' +
+      'reasoning efforts. Use the ids here as dsh_delegate\'s model / provider / reasoningEffort. ' +
+      'Also reports the instance default used by sessions nobody has configured.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'dsh_delegate',
     description:
       'Delegate a task to a DSH agent, like handing work to a subagent. Creates a new session in the ' +
       'given workspace (or continues an existing one when sessionId is supplied), sends the instruction, ' +
       'and by default blocks until that turn finishes and returns its final output. ' +
       'Pass the returned sessionId back in later calls to keep working with the same DSH agent. ' +
-      'If DSH blocks on a human question it returns status "waiting" immediately rather than hanging.',
+      'If DSH blocks on a human question it returns status "waiting" immediately rather than hanging. ' +
+      'Pass model to run this delegation on a model you choose (call dsh_models first for the ids).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -177,6 +191,25 @@ const TOOLS = [
         agentPreset: {
           type: 'string',
           description: 'Optional agent preset id for a newly created session.',
+        },
+        model: {
+          type: 'string',
+          description:
+            'Model id to run this turn on, e.g. "deepseek-v4.1-flash". Accepts "provider/model" too. ' +
+            'Omit to leave the session (or the instance default) alone. Get ids from dsh_models. ' +
+            'The choice also becomes this instance\'s saved default, exactly as the DSH model picker does.',
+        },
+        provider: {
+          type: 'string',
+          description:
+            'Provider route for model (e.g. "deepseek"). Optional: it is inferred when the model id is ' +
+            'unambiguous, or from "provider/model".',
+        },
+        reasoningEffort: {
+          type: 'string',
+          description:
+            'Optional reasoning effort id for the chosen model, such as "high". Only ids dsh_models lists ' +
+            'for that model are valid; omit to take the model\'s default.',
         },
         takeover: {
           type: 'boolean',
@@ -298,6 +331,11 @@ async function callTool(name, args) {
     return textBlock(JSON.stringify(data, null, 2))
   }
 
+  if (name === 'dsh_models') {
+    const data = await callRelay('/models')
+    return textBlock(JSON.stringify(data, null, 2))
+  }
+
   if (name === 'dsh_delegate') {
     const accepted = await callRelay('/delegate', {
       method: 'POST',
@@ -307,6 +345,9 @@ async function callTool(name, args) {
         sessionId: args.sessionId,
         mode: args.mode,
         agentPreset: args.agentPreset,
+        model: args.model,
+        provider: args.provider,
+        reasoningEffort: args.reasoningEffort,
         takeover: args.takeover !== false,
       },
     })
@@ -321,6 +362,7 @@ async function callTool(name, args) {
             requestId: accepted.requestId,
             status: 'accepted',
             takeover: accepted.takeover === true,
+            ...(accepted.model ? { model: accepted.model, modelNote: accepted.modelNote } : {}),
             baselineSeq,
             note: 'Not waiting. Call dsh_poll with this sessionId and baselineSeq to collect the result.',
           },
@@ -339,12 +381,19 @@ async function callTool(name, args) {
         {
           sessionId: accepted.sessionId,
           created: accepted.created,
+          ...summarizeView(view),
+          // The wait outcome, not the session's own status: the caller branches on
+          // completed / waiting / timeout, exactly as the injected instructions say.
+          // summarizeView carries the session state under the same key, so it has to
+          // be spread first.
           status: outcome,
+          // The selection this call installed, when it installed one; the spread
+          // above already carries the session's own model hint otherwise.
+          ...(accepted.model ? { model: accepted.model, modelNote: accepted.modelNote } : {}),
           output: outcome === 'waiting' ? '' : output,
           waiting: view && view.waiting ? view.waiting : undefined,
           action: waitingNotice(view),
           baselineSeq,
-          ...summarizeView(view),
           note:
             outcome === 'timeout'
               ? 'Still running. Call dsh_poll again with the same sessionId.'
@@ -405,11 +454,13 @@ async function callTool(name, args) {
       JSON.stringify(
         {
           sessionId: args.sessionId,
+          ...summarizeView(view),
+          // Same rule as dsh_delegate: the wait outcome outranks the session status
+          // that summarizeView carries under this key.
           status,
           output: view && view.output ? view.output : '',
           waiting: view && view.waiting ? view.waiting : undefined,
           action: waitingNotice(view),
-          ...summarizeView(view),
         },
         null,
         2,
@@ -432,7 +483,7 @@ async function handleRequest(method, params) {
       return {
         protocolVersion: (params && params.protocolVersion) || '2024-11-05',
         capabilities: { tools: {} },
-        serverInfo: { name: 'dsh-mcp-relay', version: '0.5.0' },
+        serverInfo: { name: 'dsh-mcp-relay', version: '0.6.0' },
         // Injected into the client's context at handshake time, so the caller
         // learns the delegation model and the waiting contract without any
         // manual setup on the user's side.
@@ -442,6 +493,7 @@ async function handleRequest(method, params) {
           'calls, works in the workspace you name, and returns a final answer.',
           '',
           '- dsh_list_sessions: find a sessionId to continue, or see what DSH is doing.',
+          '- dsh_models: list the provider/model ids this instance can route, with reasoning efforts.',
           '- dsh_delegate: create a session in a workspace (or continue one via sessionId), send an',
           '  instruction, and block until the turn finishes, returning the final output.',
           '- dsh_answer: answer a question DSH asked, so its agent can resume.',
@@ -464,6 +516,12 @@ async function handleRequest(method, params) {
           '        DSH gave. dsh_approval({ sessionId, mode }) only changes FUTURE approvals:',
           '        "deny" rejects them at once, "gui" leaves them to the GUI.',
           '',
+          'Choosing a model: a session runs on this instance\'s default model unless you say otherwise.',
+          'Call dsh_models for the ids it can route, then pass model (plus provider and reasoningEffort',
+          'when you want to pin them) to dsh_delegate; it applies to that turn. The choice is also saved',
+          'as the instance default for later sessions, exactly as the DSH model picker behaves, so pick',
+          'deliberately and say so when you do. Omit model to leave the session on what it already uses.',
+          '',
           'Rules: reuse a sessionId to continue the SAME line of work — a new session loses that context —',
           'but never reuse it for a different task. Pass an absolute path as workspace when creating a',
           'session. Resolve a waiting state yourself',
@@ -477,8 +535,9 @@ async function handleRequest(method, params) {
           '- One task per session: start a new session for each new task, and a fresh one once the context',
           '  has grown long. Do not pile unrelated work into an old session.',
           '- Always pass an absolute workspace path when creating a session.',
-          '- Model: DeepSeek 4.1 Flash with a vision plugin, so it can read images — but the results can be',
-          '  inaccurate. Give it only simple image-reading tasks.',
+          '- Default model: DeepSeek 4.1 Flash with a vision plugin, so it can read images — but the results',
+          '  can be inaccurate. Give it only simple image-reading tasks. A different model is usable only',
+          '  when dsh_models lists it; check before promising one.',
           '- Never delegate visual design (drawing, web page layout, application UI, art): the model cannot',
           '  do it. For front-end work, supply a detailed written spec or a visual mockup first.',
           '- Do not check progress often; look in only when the user asks you to go faster.',

@@ -1,6 +1,6 @@
 {
   "name": "dsh-mcp-relay",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Expose a running DeepSeek Harness instance over MCP, so an external agent can list, delegate to, and answer questions in that instance's own sessions.",
   "type": "module",
   "main": "lib/index.js",
@@ -24,6 +24,9 @@
     "bundle": {
       "patch": "./cordis.patch.yml"
     }
+  },
+  "scripts": {
+    "test": "node test/model-selection.test.mjs"
   },
   "keywords": [
     "dsh",

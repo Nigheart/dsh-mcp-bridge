@@ -60,7 +60,7 @@ dsh plugin --profile web add github:Nigheart/dsh-mcp-relay
 
 ```bash
 curl -s http://127.0.0.1:3080/dsh-relay/ping
-# {"ok":true,"data":{"relay":"dsh-mcp-relay","version":"0.5.0","tokenRequired":false}}
+# {"ok":true,"data":{"relay":"dsh-mcp-relay","version":"0.6.0","tokenRequired":false}}
 ```
 
 如果你的实例监听的不是 3080，请把这里和下面的 `DSH_RELAY_URL` 一起改成实际端口。
@@ -112,6 +112,7 @@ server 会在 MCP 握手时（`initialize.instructions`）下发自己的用法�
 | 工具 | 用途 |
 |---|---|
 | `dsh_list_sessions` | 列出该实例的会话，可按工作区过滤。 |
+| `dsh_models` | 列出该实例当前能路由的 provider/model id，以及每个模型可用的推理档位。 |
 | `dsh_delegate` | 在工作区新建会话、或按 `sessionId` 继续一个会话，发送指令并等待该轮结束。 |
 | `dsh_answer` | 回答 DSH agent 提出的问题，让它继续。 |
 | `dsh_approval` | 选择该会话**后续**审批请求如何处理：`gui`、`auto-approve` 或 `deny`。 |
@@ -132,6 +133,26 @@ dsh_delegate({ workspace: "/home/me/project", instruction: "给 parser.js 补上
 | `completed` | 该轮结束，`output` 是 agent 的最终答复。 |
 | `waiting` | 卡在等人：要么是被接管机制扣下的提问，要么是一笔待处理的审批。 |
 | `timeout` | 仍在运行；用同一个 `baselineSeq` 再调 `dsh_poll`。 |
+
+### 选择模型
+
+会话默认跑实例的默认模型，除非调用方另行指定。`dsh_models` 报告该实例当前能路由什么——按 provider
+分组的模型 id，以及每个模型的推理档位：
+
+```
+dsh_models()
+dsh_delegate({ workspace: "/home/me/project", instruction: "…",
+               model: "deepseek-v4.1-pro", reasoningEffort: "high" })
+```
+
+`model` 填模型 id；该 id 不歧义时 `provider` 会自动推断，也随时可以写成 `provider/model`。
+`reasoningEffort` 必须是 `dsh_models` 为该模型列出的档位之一。实例路由不了的选择会在**发送指令之前**
+直接让这次调用失败，而不是悄悄换一个模型把活干了。
+
+选中的模型既作用于这一轮，也会被存为该实例对新建会话的默认模型——与 DSH 自带模型选择器的行为一致，
+所以要有意识地选。省略 `model` 就保持会话原来的模型。`dsh_delegate` 会把自己装上的选择回显为 `model`
+（并附 `modelNote`）；`dsh_list_sessions` 和 `dsh_poll` 会报告每个会话当前的 `model`，读自 DSH 的
+model-selection projection（只是提示：会话尚未记录过请求、或部署缺少该 projection 时为 `null`）。
 
 ### 回答问题
 
@@ -218,6 +239,12 @@ dsh_answer({ sessionId, answers: [{ id: "choice", selected: ["sqlite"] }] })
 开发这个插件不必反复重启 DSH：先把它作为动态 Cordis 插件加载，对着真实服务验证行为，再固化成 bundle
 包安装。但最后**一定要真重启一次**——动态插件总是在它依赖的服务就绪之后才被激活，因此它无法暴露启动
 顺序类的缺陷（例如缺少 `inject`）。
+
+中继的路由表带一个无依赖的测试：它用桩替换 Cordis 上下文，因此既不需要 DSH，也不需要重启：
+
+```bash
+npm test
+```
 
 ## 许可证
 

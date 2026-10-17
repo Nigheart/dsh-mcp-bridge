@@ -61,7 +61,7 @@ Verify it independently:
 
 ```bash
 curl -s http://127.0.0.1:3080/dsh-relay/ping
-# {"ok":true,"data":{"relay":"dsh-mcp-relay","version":"0.5.0","tokenRequired":false}}
+# {"ok":true,"data":{"relay":"dsh-mcp-relay","version":"0.6.0","tokenRequired":false}}
 ```
 
 If your instance listens on a port other than 3080, use that port here and set `DSH_RELAY_URL` for the MCP
@@ -114,6 +114,7 @@ Environment variables:
 | Tool | Purpose |
 |---|---|
 | `dsh_list_sessions` | List sessions of the running instance, optionally filtered to one workspace. |
+| `dsh_models` | List the provider/model ids this instance can route, with each model's reasoning efforts. |
 | `dsh_delegate` | Create a session in a workspace, or continue one by `sessionId`, send an instruction, and wait for that turn to finish. |
 | `dsh_answer` | Answer a question the DSH agent asked, so it can resume. |
 | `dsh_approval` | Choose how a session resolves **future** approval requests: `gui`, `auto-approve`, or `deny`. |
@@ -139,6 +140,29 @@ The relay also attaches every session it creates (or reuses) to the DSH workspac
 directory. DSH groups sessions in its GUI by that explicit attachment rather than by working directory, so
 without it a delegated session runs fine but shows up as *ungrouped*. Sessions created before this behaviour
 existed can be repaired with one call to the relay's `POST /dsh-relay/attach-all` endpoint.
+
+### Choosing the model
+
+A session runs on the instance's default model unless you say otherwise. `dsh_models` reports what this
+instance can route right now — provider groups, model ids, and each model's reasoning efforts:
+
+```
+dsh_models()
+dsh_delegate({ workspace: "/home/me/project", instruction: "…",
+               model: "deepseek-v4.1-pro", reasoningEffort: "high" })
+```
+
+`model` takes a model id; `provider` is inferred when that id is unambiguous, and `provider/model` is
+always accepted. `reasoningEffort` must be one of the efforts `dsh_models` lists for that model. A route
+this instance cannot serve fails the call *before* the instruction is sent, rather than quietly running
+it on some other model.
+
+The selection applies to this turn and is also saved as the instance default for sessions created
+without one — the same stickiness DSH's own model picker has, so choose deliberately. Omit `model` to
+leave the session on whatever it already uses. `dsh_delegate` echoes the selection it installed as
+`model` (with `modelNote`); `dsh_list_sessions` and `dsh_poll` report each session's current `model`,
+read from DSH's model-selection projection (a hint: it is `null` until the session has recorded a
+request, and on deployments without that projection).
 
 ### Answering questions
 
@@ -234,6 +258,13 @@ The plugin can be developed without restarting DSH: load it as a dynamic Cordis 
 against the live services, then install it as a bundle package. Do finish with one real restart — dynamic
 plugins are activated only after the services they need already exist, so they cannot catch a startup-order
 bug such as a missing `inject`.
+
+The relay's route table has a dependency-free test that stubs the Cordis context, so it needs neither DSH nor
+a restart:
+
+```bash
+npm test
+```
 
 ## License
 
